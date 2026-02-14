@@ -1,0 +1,36 @@
+# Product Service GraphQL Schema
+#
+# Exposes product queries via GraphQL for flexible client-driven
+# data fetching. Primarily used for BFF (Backend for Frontend)
+# scenarios where clients need to select specific fields.
+
+type Query {
+  """Retrieve a single product by its unique identifier."""
+  product(id: ID!): Product
+
+  """
+  List products optionally filtered by category.
+  Returns up to `limit` results (default 10, max 100).
+  """
+  products(category: String, limit: Int = 10): [Product!]!
+
+  """Check inventory availability for a product and quantity."""
+  checkInventory(productId: ID!, quantity: Int!): InventoryCheck!
+}
+
+"""A product available for purchase."""
+type Product {
+  id: ID!
+  name: String!
+  description: String
+  price: Float!
+  currency: String!
+  stock: Int!
+  category: String!
+}
+
+"""Result of an inventory availability check."""
+type InventoryCheck {
+  available: Boolean!
+  remainingStock: Int!
+}
