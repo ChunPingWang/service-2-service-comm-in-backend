@@ -826,7 +826,39 @@ public enum ShipmentStatus {
 }
 ```
 
-### 7.4 Shipping Service Validation Rules
+### 7.4 Domain Event -- ShipmentArrangedEvent
+
+```java
+package com.poc.shipping.domain.event;
+
+import java.time.Instant;
+
+/**
+ * Published when a shipment transitions to IN_TRANSIT.
+ * Channel: Kafka topic "shipment.arranged"
+ * Consumed by: Order Service (to transition Order to SHIPPED status).
+ */
+public record ShipmentArrangedEvent(
+    String shipmentId,
+    String orderId,
+    String trackingNumber,
+    Instant timestamp
+) {
+
+    public ShipmentArrangedEvent {
+        if (shipmentId == null || shipmentId.isBlank())
+            throw new IllegalArgumentException("shipmentId must not be blank");
+        if (orderId == null || orderId.isBlank())
+            throw new IllegalArgumentException("orderId must not be blank");
+        if (trackingNumber == null || trackingNumber.isBlank())
+            throw new IllegalArgumentException("trackingNumber must not be blank");
+        if (timestamp == null)
+            throw new IllegalArgumentException("timestamp must not be null");
+    }
+}
+```
+
+### 7.5 Shipping Service Validation Rules
 
 | Rule | Field | Constraint |
 |------|-------|------------|
@@ -1117,6 +1149,8 @@ public enum ShipmentStatus {
 | Notification Service | Kafka | Kafka | Topic: `payment.completed` | `PaymentCompletedEvent` | Asynchronous consume (consumer group: `notification-service`) |
 | Notification Service | RabbitMQ | RabbitMQ | Exchange: `shipping.exchange`, Key: `shipping.create` | `ShippingRequestMessage` | Asynchronous publish |
 | Shipping Service | RabbitMQ | RabbitMQ | Queue: `shipping.queue` | `ShippingRequestMessage` | Asynchronous consume |
+| Shipping Service | Kafka | Kafka | Topic: `shipment.arranged` | `ShipmentArrangedEvent` | Asynchronous publish |
+| Order Service | Kafka | Kafka | Topic: `shipment.arranged` | `ShipmentArrangedEvent` | Asynchronous consume (consumer group: `order-service`) |
 | Client | Product Service | GraphQL | `/graphql` | GraphQL Query | Synchronous request-response (via API Gateway) |
 
 ### 10.3 Event Schemas Summary
@@ -1126,6 +1160,7 @@ public enum ShipmentStatus {
 | `OrderCreatedEvent` | Order Service | Payment Service | `orderId` | Kafka: `order.created` | Deduplicate by `orderId` |
 | `PaymentCompletedEvent` | Payment Service | Notification Service | `orderId` | Kafka: `payment.completed` | Deduplicate by `paymentId` |
 | `ShippingRequestMessage` | Notification Service | Shipping Service | -- | RabbitMQ: `shipping.queue` | Deduplicate by `orderId` |
+| `ShipmentArrangedEvent` | Shipping Service | Order Service | `orderId` | Kafka: `shipment.arranged` | Deduplicate by `shipmentId` |
 
 ### 10.4 Dead Letter Queue (DLQ) Configuration
 
@@ -1134,6 +1169,7 @@ public enum ShipmentStatus {
 | Kafka: `order.created` | Kafka: `order.created.dlq` | Consumer throws after max retries |
 | Kafka: `payment.completed` | Kafka: `payment.completed.dlq` | Consumer throws after max retries |
 | RabbitMQ: `shipping.queue` | RabbitMQ: `shipping.dlq` | Message nack after max retries |
+| Kafka: `shipment.arranged` | Kafka: `shipment.arranged.dlq` | Consumer throws after max retries |
 
 ---
 
@@ -1170,7 +1206,11 @@ Step 5: Shipping
   Shipping Service ──[RabbitMQ consumer]──▶ receives ShippingRequestMessage
   Shipment created in PENDING status
   Shipment transitions to IN_TRANSIT (tracking number assigned)
-  Order transitions to SHIPPED
+  Shipping Service publishes ShipmentArrangedEvent to Kafka
+
+Step 6: Order status closure
+  Order Service ──[Kafka consumer]──▶ receives ShipmentArrangedEvent
+  Order transitions to SHIPPED (terminal state)
 ```
 
 ---
@@ -1208,6 +1248,7 @@ Step 5: Shipping
 | Shipping | `ShipmentId` | Value Object (record) | `com.poc.shipping.domain.model` |
 | Shipping | `ShipmentStatus` | Enum | `com.poc.shipping.domain.model` |
 | Shipping | `OrderId` | Value Object (record) | `com.poc.shipping.domain.model` |
+| Shipping | `ShipmentArrangedEvent` | Domain Event (record) | `com.poc.shipping.domain.event` |
 
 ### 12.2 Cross-Context ID References
 

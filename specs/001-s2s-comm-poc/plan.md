@@ -83,9 +83,9 @@ services/
 │       │   │   │   │   ├── OrderRequest.java
 │       │   │   │   │   ├── OrderResponse.java
 │       │   │   │   │   └── OrderRestMapper.java
-│       │   │   │   └── graphql/
-│       │   │   │       ├── OrderGraphQLController.java
-│       │   │   │       └── OrderGraphQLMapper.java
+│       │   │   │   └── messaging/
+│       │   │   │       ├── KafkaShipmentConsumer.java
+│       │   │   │       └── ShipmentEventMapper.java
 │       │   │   └── out/
 │       │   │       ├── grpc/
 │       │   │       │   ├── ProductGrpcClient.java
@@ -100,7 +100,8 @@ services/
 │       │   │   ├── port/
 │       │   │   │   ├── in/
 │       │   │   │   │   ├── CreateOrderUseCase.java
-│       │   │   │   │   └── QueryOrderUseCase.java
+│       │   │   │   │   ├── QueryOrderUseCase.java
+│       │   │   │   │   └── HandleShipmentEventUseCase.java
 │       │   │   │   └── out/
 │       │   │   │       ├── ProductQueryPort.java
 │       │   │   │       ├── PaymentPort.java
@@ -169,17 +170,23 @@ services/
 │   └── src/
 │       ├── main/java/com/poc/payment/
 │       │   ├── adapter/
-│       │   │   ├── in/rest/
-│       │   │   │   ├── PaymentController.java
-│       │   │   │   ├── PaymentRequest.java
-│       │   │   │   ├── PaymentResponse.java
-│       │   │   │   └── PaymentRestMapper.java
+│       │   │   ├── in/
+│       │   │   │   ├── rest/
+│       │   │   │   │   ├── PaymentController.java
+│       │   │   │   │   ├── PaymentRequest.java
+│       │   │   │   │   ├── PaymentResponse.java
+│       │   │   │   │   └── PaymentRestMapper.java
+│       │   │   │   └── messaging/
+│       │   │   │       ├── KafkaOrderEventConsumer.java
+│       │   │   │       └── OrderEventMapper.java
 │       │   │   └── out/messaging/
 │       │   │       ├── PaymentEventPublisher.java
 │       │   │       └── PaymentEventMapper.java
 │       │   ├── application/
 │       │   │   ├── port/
-│       │   │   │   ├── in/ProcessPaymentUseCase.java
+│       │   │   │   ├── in/
+│       │   │   │   │   ├── ProcessPaymentUseCase.java
+│       │   │   │   │   └── HandleOrderCreatedUseCase.java
 │       │   │   │   └── out/PaymentEventPort.java
 │       │   │   └── service/
 │       │   │       └── PaymentApplicationService.java
@@ -233,21 +240,28 @@ services/
     └── src/
         ├── main/java/com/poc/shipping/
         │   ├── adapter/
-        │   │   └── in/messaging/
-        │   │       ├── RabbitMQShippingConsumer.java
-        │   │       └── ShippingMessageMapper.java
+        │   │   ├── in/messaging/
+        │   │   │   ├── RabbitMQShippingConsumer.java
+        │   │   │   └── ShippingMessageMapper.java
+        │   │   └── out/messaging/
+        │   │       ├── ShipmentEventPublisher.java
+        │   │       └── ShipmentEventMapper.java
         │   ├── application/
-        │   │   ├── port/in/
-        │   │   │   └── ArrangeShipmentUseCase.java
+        │   │   ├── port/
+        │   │   │   ├── in/ArrangeShipmentUseCase.java
+        │   │   │   └── out/ShipmentEventPort.java
         │   │   └── service/
         │   │       └── ShippingApplicationService.java
         │   ├── domain/
-        │   │   └── model/
-        │   │       ├── Shipment.java
-        │   │       ├── ShipmentId.java
-        │   │       └── ShipmentStatus.java
+        │   │   ├── model/
+        │   │   │   ├── Shipment.java
+        │   │   │   ├── ShipmentId.java
+        │   │   │   └── ShipmentStatus.java
+        │   │   └── event/
+        │   │       └── ShipmentArrangedEvent.java
         │   └── config/
-        │       └── RabbitMQConfig.java
+        │       ├── RabbitMQConfig.java
+        │       └── KafkaProducerConfig.java
         └── test/java/com/poc/shipping/
             ├── unit/
             ├── integration/

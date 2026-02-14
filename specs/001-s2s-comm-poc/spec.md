@@ -461,3 +461,12 @@ successfully with tracing visibility across the entire chain.
   ephemeral storage is sufficient for the PoC.
 - SQS simulation (mentioned in PRD) is deferred; Kafka and
   RabbitMQ cover the core asynchronous patterns sufficiently.
+- Payment processing has two paths for pattern comparison:
+  (1) Order calls Payment via REST synchronously (US1 validation),
+  (2) Payment consumes `order.created` Kafka events asynchronously
+  (US2 validation). The E2E business flow (US8) uses the REST
+  path for payment. Both paths exist to validate sync vs. async
+  approaches; they are not intended for simultaneous production use.
+- The Order SHIPPED status transition is triggered by a
+  `shipment.arranged` Kafka event published by Shipping Service
+  and consumed by Order Service, closing the E2E feedback loop.

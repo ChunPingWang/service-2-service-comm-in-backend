@@ -157,7 +157,7 @@
 ### Application Layer Implementation
 
 - [ ] T064 [P] [US2] Create Order Service outbound event port (OrderEventPort) in services/order-service/src/main/java/com/poc/order/application/port/out/OrderEventPort.java
-- [ ] T065 [P] [US2] Create Payment Service event port (PaymentEventPort) and update PaymentApplicationService for Kafka consume/produce in services/payment-service/src/main/java/com/poc/payment/application/
+- [ ] T065 [P] [US2] Create Payment Service ports (HandleOrderCreatedUseCase inbound, PaymentEventPort outbound) and update PaymentApplicationService for Kafka consume/produce in services/payment-service/src/main/java/com/poc/payment/application/
 - [ ] T066 [P] [US2] Create Notification Service ports (HandlePaymentEventUseCase, ShippingNotificationPort) and NotificationApplicationService in services/notification-service/src/main/java/com/poc/notification/application/
 - [ ] T067 [P] [US2] Create Shipping Service port (ArrangeShipmentUseCase) and ShippingApplicationService in services/shipping-service/src/main/java/com/poc/shipping/application/
 
@@ -187,7 +187,23 @@
 - [ ] T080 [P] [US2] Create RabbitMQ deployment manifest in infrastructure/k8s/messaging/rabbitmq.yaml
 - [ ] T081 [P] [US2] Create K8s deployment manifests for Notification and Shipping services in infrastructure/k8s/services/
 
-**Checkpoint**: Kafka events flow Order->Payment->Notification. RabbitMQ messages flow Notification->Shipping. DLQ routing works. All messaging integration tests pass with Testcontainers.
+### Shipping-to-Order Feedback Event (Order SHIPPED Trigger)
+
+- [ ] T082 [P] [US2] Write unit test for ShipmentArrangedEvent in services/shipping-service/src/test/java/com/poc/shipping/unit/domain/ShipmentArrangedEventTest.java
+- [ ] T083 [P] [US2] Implement ShipmentArrangedEvent in services/shipping-service/src/main/java/com/poc/shipping/domain/event/ShipmentArrangedEvent.java
+- [ ] T084 [US2] Create ShipmentEventPort and update ShippingApplicationService to publish ShipmentArrangedEvent after shipment arranged in services/shipping-service/src/main/java/com/poc/shipping/application/
+- [ ] T085 [P] [US2] Write Kafka integration test for Shipping event publish and Order consume in services/shipping-service/src/test/java/com/poc/shipping/integration/ShipmentKafkaIntegrationTest.java
+- [ ] T086 [US2] Implement ShipmentEventPublisher and ShipmentEventMapper (Kafka producer) in services/shipping-service/src/main/java/com/poc/shipping/adapter/out/messaging/
+- [ ] T087 [US2] Create HandleShipmentEventUseCase port and implement KafkaShipmentConsumer with ShipmentEventMapper in services/order-service/src/main/java/com/poc/order/ (application/port/in/ + adapter/in/messaging/)
+- [ ] T088 [US2] Configure Kafka producer in services/shipping-service/src/main/java/com/poc/shipping/config/KafkaProducerConfig.java and application.yml
+
+### DLQ Configuration (Explicit)
+
+- [ ] T089 [P] [US2] Configure Kafka DLQ error handling (DefaultErrorHandler + DeadLetterPublishingRecoverer) for Payment and Notification consumers in respective config/ packages and application.yml
+- [ ] T090 [P] [US2] Configure RabbitMQ DLQ (x-dead-letter-exchange, x-dead-letter-routing-key) for Shipping consumer in services/shipping-service/src/main/java/com/poc/shipping/config/RabbitMQConfig.java
+- [ ] T091 [P] [US2] Write DLQ verification integration test (Kafka + RabbitMQ) in e2e-tests/src/test/java/com/poc/e2e/DlqVerificationTest.java
+
+**Checkpoint**: Kafka events flow Order->Payment->Notification. RabbitMQ messages flow Notification->Shipping. Shipping publishes ShipmentArrangedEvent back to Order (SHIPPED status). DLQ routing verified for all 3 Kafka topics and RabbitMQ queue. All messaging integration tests pass with Testcontainers.
 
 ---
 
@@ -199,16 +215,16 @@
 
 ### TDD: Gateway Integration Tests (Write FIRST, verify FAIL)
 
-- [ ] T082 [P] [US3] Write gateway routing integration test in e2e-tests/src/test/java/com/poc/e2e/GatewayRoutingTest.java
-- [ ] T083 [P] [US3] Write rate limiting integration test in e2e-tests/src/test/java/com/poc/e2e/RateLimitingTest.java
-- [ ] T084 [P] [US3] Write JWT authentication integration test in e2e-tests/src/test/java/com/poc/e2e/JwtAuthenticationTest.java
+- [ ] T092 [P] [US3] Write gateway routing integration test in e2e-tests/src/test/java/com/poc/e2e/GatewayRoutingTest.java
+- [ ] T093 [P] [US3] Write rate limiting integration test in e2e-tests/src/test/java/com/poc/e2e/RateLimitingTest.java
+- [ ] T094 [P] [US3] Write JWT authentication integration test in e2e-tests/src/test/java/com/poc/e2e/JwtAuthenticationTest.java
 
 ### Gateway Configuration
 
-- [ ] T085 [US3] Create APISIX deployment manifest in infrastructure/k8s/api-gateway/apisix-deployment.yaml
-- [ ] T086 [US3] Create APISIX route configuration with upstream definitions for all services in infrastructure/k8s/api-gateway/apisix-routes.yaml
-- [ ] T087 [US3] Configure JWT authentication plugin for protected routes in APISIX routes
-- [ ] T088 [US3] Configure rate limiting plugin (limit-req, 100 req/s) in APISIX routes
+- [ ] T095 [US3] Create APISIX deployment manifest in infrastructure/k8s/api-gateway/apisix-deployment.yaml
+- [ ] T096 [US3] Create APISIX route configuration with upstream definitions for all services in infrastructure/k8s/api-gateway/apisix-routes.yaml
+- [ ] T097 [US3] Configure JWT authentication plugin for protected routes in APISIX routes
+- [ ] T098 [US3] Configure rate limiting plugin (limit-req, 100 req/s) in APISIX routes
 
 **Checkpoint**: All external requests route through APISIX. Rate limiting returns 429. JWT auth rejects unauthorized requests with 401. gRPC proxying works for Product Service.
 
@@ -222,15 +238,15 @@
 
 ### TDD: Discovery Integration Tests (Write FIRST, verify FAIL)
 
-- [ ] T089 [P] [US4] Write K8s DNS service discovery test in e2e-tests/src/test/java/com/poc/e2e/KubernetesDnsDiscoveryTest.java
-- [ ] T090 [P] [US4] Write Eureka service discovery test in e2e-tests/src/test/java/com/poc/e2e/EurekaDiscoveryTest.java
-- [ ] T091 [P] [US4] Write Consul service discovery test in e2e-tests/src/test/java/com/poc/e2e/ConsulDiscoveryTest.java
+- [ ] T099 [P] [US4] Write K8s DNS service discovery test in e2e-tests/src/test/java/com/poc/e2e/KubernetesDnsDiscoveryTest.java
+- [ ] T100 [P] [US4] Write Eureka service discovery test in e2e-tests/src/test/java/com/poc/e2e/EurekaDiscoveryTest.java
+- [ ] T101 [P] [US4] Write Consul service discovery test in e2e-tests/src/test/java/com/poc/e2e/ConsulDiscoveryTest.java
 
 ### Service Discovery Infrastructure
 
-- [ ] T092 [P] [US4] Create Eureka server deployment manifest in infrastructure/k8s/service-discovery/eureka.yaml
-- [ ] T093 [P] [US4] Create Consul deployment manifest in infrastructure/k8s/service-discovery/consul.yaml
-- [ ] T094 [US4] Add Spring Cloud discovery client configuration (K8s DNS, Eureka, Consul profiles) to all service application.yml files
+- [ ] T102 [P] [US4] Create Eureka server deployment manifest in infrastructure/k8s/service-discovery/eureka.yaml
+- [ ] T103 [P] [US4] Create Consul deployment manifest in infrastructure/k8s/service-discovery/consul.yaml
+- [ ] T104 [US4] Add Spring Cloud discovery client configuration (K8s DNS, Eureka, Consul profiles) to all service application.yml files
 
 **Checkpoint**: Services register automatically on startup, are discoverable via all three mechanisms, and deregister on shutdown within the specified time windows.
 
@@ -244,21 +260,21 @@
 
 ### TDD: Observability Integration Tests (Write FIRST, verify FAIL)
 
-- [ ] T095 [P] [US5] Write distributed tracing verification test in e2e-tests/src/test/java/com/poc/e2e/TracingE2ETest.java
-- [ ] T096 [P] [US5] Write metrics collection verification test in e2e-tests/src/test/java/com/poc/e2e/MetricsVerificationTest.java
+- [ ] T105 [P] [US5] Write distributed tracing verification test in e2e-tests/src/test/java/com/poc/e2e/TracingE2ETest.java
+- [ ] T106 [P] [US5] Write metrics collection verification test in e2e-tests/src/test/java/com/poc/e2e/MetricsVerificationTest.java
 
 ### Observability Infrastructure
 
-- [ ] T097 [P] [US5] Create OpenTelemetry Collector deployment manifest in infrastructure/k8s/observability/otel-collector.yaml
-- [ ] T098 [P] [US5] Create Jaeger deployment manifest in infrastructure/k8s/observability/jaeger.yaml
-- [ ] T099 [P] [US5] Create Prometheus deployment manifest with scrape config in infrastructure/k8s/observability/prometheus.yaml
-- [ ] T100 [P] [US5] Create Grafana deployment manifest with dashboard provisioning in infrastructure/k8s/observability/grafana.yaml
-- [ ] T101 [P] [US5] Create Loki + Promtail deployment manifests in infrastructure/k8s/observability/loki.yaml
+- [ ] T107 [P] [US5] Create OpenTelemetry Collector deployment manifest in infrastructure/k8s/observability/otel-collector.yaml
+- [ ] T108 [P] [US5] Create Jaeger deployment manifest in infrastructure/k8s/observability/jaeger.yaml
+- [ ] T109 [P] [US5] Create Prometheus deployment manifest with scrape config in infrastructure/k8s/observability/prometheus.yaml
+- [ ] T110 [P] [US5] Create Grafana deployment manifest with dashboard provisioning in infrastructure/k8s/observability/grafana.yaml
+- [ ] T111 [P] [US5] Create Loki + Promtail deployment manifests in infrastructure/k8s/observability/loki.yaml
 
 ### Service Instrumentation Configuration
 
-- [ ] T102 [US5] Configure OpenTelemetry SDK, Micrometer tracing, and structured logging with correlation IDs in all service application.yml files
-- [ ] T103 [P] [US5] Create ObservabilityConfig for each service in config/ packages (OTel exporter, Prometheus endpoint, log pattern with traceId/spanId)
+- [ ] T112 [US5] Configure OpenTelemetry SDK, Micrometer tracing, and structured logging with correlation IDs in all service application.yml files
+- [ ] T113 [P] [US5] Create ObservabilityConfig for each service in config/ packages (OTel exporter, Prometheus endpoint, log pattern with traceId/spanId)
 
 **Checkpoint**: Single trace ID connects all service spans in Jaeger. Metrics visible in Grafana dashboards. Correlated logs queryable in Loki via correlation ID.
 
@@ -272,15 +288,15 @@
 
 ### TDD: Resilience Tests (Write FIRST, verify FAIL)
 
-- [ ] T104 [P] [US6] Write circuit breaker unit test for Order-to-Payment path in services/order-service/src/test/java/com/poc/order/unit/application/CircuitBreakerTest.java
-- [ ] T105 [P] [US6] Write circuit breaker integration test with Testcontainers in services/order-service/src/test/java/com/poc/order/integration/CircuitBreakerIntegrationTest.java
+- [ ] T114 [P] [US6] Write circuit breaker unit test for Order-to-Payment path in services/order-service/src/test/java/com/poc/order/unit/application/CircuitBreakerTest.java
+- [ ] T115 [P] [US6] Write circuit breaker integration test with Testcontainers in services/order-service/src/test/java/com/poc/order/integration/CircuitBreakerIntegrationTest.java
 
 ### Resilience Implementation
 
-- [ ] T106 [US6] Configure Resilience4j circuit breaker, retry, and time limiter in services/order-service/src/main/java/com/poc/order/config/CircuitBreakerConfig.java
-- [ ] T107 [US6] Add @CircuitBreaker and @Retry annotations with fallback methods to PaymentRestClient in services/order-service/src/main/java/com/poc/order/adapter/out/rest/PaymentRestClient.java
-- [ ] T108 [US6] Implement FaultSimulationConfig for Payment Service in services/payment-service/src/main/java/com/poc/payment/config/FaultSimulationConfig.java
-- [ ] T109 [US6] Add Resilience4j configuration properties (sliding window size: 10, failure threshold: 50%, wait duration: 10s) to Order Service application.yml
+- [ ] T116 [US6] Configure Resilience4j circuit breaker, retry, and time limiter in services/order-service/src/main/java/com/poc/order/config/CircuitBreakerConfig.java
+- [ ] T117 [US6] Add @CircuitBreaker and @Retry annotations with fallback methods to PaymentRestClient in services/order-service/src/main/java/com/poc/order/adapter/out/rest/PaymentRestClient.java
+- [ ] T118 [US6] Implement FaultSimulationConfig for Payment Service in services/payment-service/src/main/java/com/poc/payment/config/FaultSimulationConfig.java
+- [ ] T119 [US6] Add Resilience4j configuration properties (sliding window size: 10, failure threshold: 50%, wait duration: 10s) to Order Service application.yml
 
 **Checkpoint**: Circuit breaker transitions CLOSED->OPEN->HALF-OPEN correctly. Retries execute with exponential backoff (1s base, 2x multiplier, 3 attempts). Fallback responses returned when circuit is open.
 
@@ -294,17 +310,17 @@
 
 ### TDD: Service Mesh Tests (Write FIRST, verify FAIL)
 
-- [ ] T110 [P] [US7] Write sidecar injection verification test in e2e-tests/src/test/java/com/poc/e2e/ServiceMeshSidecarTest.java
-- [ ] T111 [P] [US7] Write mTLS verification test in e2e-tests/src/test/java/com/poc/e2e/MtlsVerificationTest.java
-- [ ] T112 [P] [US7] Write traffic management test (canary, fault injection) in e2e-tests/src/test/java/com/poc/e2e/TrafficManagementTest.java
+- [ ] T120 [P] [US7] Write sidecar injection verification test in e2e-tests/src/test/java/com/poc/e2e/ServiceMeshSidecarTest.java
+- [ ] T121 [P] [US7] Write mTLS verification test in e2e-tests/src/test/java/com/poc/e2e/MtlsVerificationTest.java
+- [ ] T122 [P] [US7] Write traffic management test (canary, fault injection) in e2e-tests/src/test/java/com/poc/e2e/TrafficManagementTest.java
 
 ### Service Mesh Infrastructure
 
-- [ ] T113 [US7] Create Istio installation manifest in infrastructure/k8s/service-mesh/istio-install.yaml
-- [ ] T114 [US7] Configure namespace for automatic sidecar injection (label: istio-injection=enabled)
-- [ ] T115 [US7] Create mTLS PeerAuthentication policy in infrastructure/k8s/service-mesh/mtls-policy.yaml
-- [ ] T116 [US7] Create traffic management rules (VirtualService, DestinationRule for canary 90/10 split) in infrastructure/k8s/service-mesh/traffic-rules.yaml
-- [ ] T117 [US7] Create fault injection rules (delay, abort) in infrastructure/k8s/service-mesh/fault-injection.yaml
+- [ ] T123 [US7] Create Istio installation manifest in infrastructure/k8s/service-mesh/istio-install.yaml
+- [ ] T124 [US7] Configure namespace for automatic sidecar injection (label: istio-injection=enabled)
+- [ ] T125 [US7] Create mTLS PeerAuthentication policy in infrastructure/k8s/service-mesh/mtls-policy.yaml
+- [ ] T126 [US7] Create traffic management rules (VirtualService, DestinationRule for canary 90/10 split) in infrastructure/k8s/service-mesh/traffic-rules.yaml
+- [ ] T127 [US7] Create fault injection rules (delay, abort) in infrastructure/k8s/service-mesh/fault-injection.yaml
 
 **Checkpoint**: All traffic routes through sidecar proxies transparently. mTLS encrypts service-to-service communication. Traffic splitting and fault injection work as configured.
 
@@ -318,16 +334,16 @@
 
 ### TDD: E2E Tests (Write FIRST, verify FAIL)
 
-- [ ] T118 [P] [US8] Write synchronous communication E2E test in e2e-tests/src/test/java/com/poc/e2e/SyncCommunicationE2ETest.java
-- [ ] T119 [P] [US8] Write asynchronous communication E2E test in e2e-tests/src/test/java/com/poc/e2e/AsyncCommunicationE2ETest.java
-- [ ] T120 [P] [US8] Write full business flow E2E test (all 5 services) in e2e-tests/src/test/java/com/poc/e2e/FullBusinessFlowE2ETest.java
-- [ ] T121 [P] [US8] Write circuit breaker E2E test in e2e-tests/src/test/java/com/poc/e2e/CircuitBreakerE2ETest.java
-- [ ] T122 [US8] Write distributed tracing E2E test verifying single trace across all 5 services in e2e-tests/src/test/java/com/poc/e2e/DistributedTracingE2ETest.java
+- [ ] T128 [P] [US8] Write synchronous communication E2E test in e2e-tests/src/test/java/com/poc/e2e/SyncCommunicationE2ETest.java
+- [ ] T129 [P] [US8] Write asynchronous communication E2E test in e2e-tests/src/test/java/com/poc/e2e/AsyncCommunicationE2ETest.java
+- [ ] T130 [P] [US8] Write full business flow E2E test (all 5 services) in e2e-tests/src/test/java/com/poc/e2e/FullBusinessFlowE2ETest.java
+- [ ] T131 [P] [US8] Write circuit breaker E2E test in e2e-tests/src/test/java/com/poc/e2e/CircuitBreakerE2ETest.java
+- [ ] T132 [US8] Write distributed tracing E2E test verifying single trace across all 5 services in e2e-tests/src/test/java/com/poc/e2e/DistributedTracingE2ETest.java
 
 ### E2E Integration
 
-- [ ] T123 [US8] Create Kind cluster setup script with service deployment ordering in infrastructure/kind/setup.sh
-- [ ] T124 [US8] Create docker-compose.yml for local development environment (non-K8s) at repository root
+- [ ] T133 [US8] Create Kind cluster setup script with service deployment ordering in infrastructure/kind/setup.sh
+- [ ] T134 [US8] Create docker-compose.yml for local development environment (non-K8s) at repository root
 
 **Checkpoint**: Complete order flow executes successfully across all 5 services. Single trace ID connects all spans. Circuit breaker handles Payment Service failures gracefully in E2E scenario.
 
@@ -337,10 +353,10 @@
 
 **Purpose**: Final refinements that span multiple user stories
 
-- [ ] T125 [P] Validate all ArchUnit tests pass across 5 services
-- [ ] T126 [P] Verify test coverage meets 80% threshold for domain and application layers
-- [ ] T127 Run quickstart.md validation (cluster-up, build, deploy, test full cycle)
-- [ ] T128 Review and finalize Makefile targets for complete build-test-deploy cycle
+- [ ] T135 [P] Validate all ArchUnit tests pass across 5 services
+- [ ] T136 [P] Verify test coverage meets 80% threshold for domain and application layers
+- [ ] T137 Run quickstart.md validation (cluster-up, build, deploy, test full cycle)
+- [ ] T138 Review and finalize Makefile targets for complete build-test-deploy cycle
 
 ---
 
@@ -414,6 +430,9 @@ T058, T059, T060, T061 -- domain implementations in parallel
 T062, T063 -- application tests in parallel
 T068, T069, T070, T071 -- messaging integration tests in parallel
 T079, T080, T081 -- K8s manifests in parallel
+T082, T083 -- ShipmentArrangedEvent test + impl in parallel
+T085 -- Shipping Kafka integration test (parallel with above)
+T089, T090, T091 -- DLQ configuration tasks in parallel
 ```
 
 **Cross-Story Parallel**:
@@ -495,7 +514,7 @@ With multiple developers:
 | Phase 1: Setup | -- | 6 | 5 |
 | Phase 2: Foundational | -- | 13 | 12 |
 | Phase 3: US1 Sync | US1 | 34 | 25 |
-| Phase 4: US2 Async | US2 | 28 | 20 |
+| Phase 4: US2 Async | US2 | 38 | 26 |
 | Phase 5: US3 Gateway | US3 | 7 | 3 |
 | Phase 6: US4 Discovery | US4 | 6 | 5 |
 | Phase 7: US5 Observability | US5 | 9 | 8 |
@@ -503,7 +522,7 @@ With multiple developers:
 | Phase 9: US7 Service Mesh | US7 | 8 | 3 |
 | Phase 10: US8 E2E | US8 | 7 | 4 |
 | Phase 11: Polish | -- | 4 | 2 |
-| **Total** | | **128** | **89** |
+| **Total** | | **138** | **95** |
 
 ---
 
