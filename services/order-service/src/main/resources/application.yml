@@ -1,0 +1,130 @@
+spring:
+  application:
+    name: order-service
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: order-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: manual
+
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+    metrics:
+      export:
+        enabled: true
+        step: 15s
+
+grpc:
+  client:
+    product-service:
+      address: static://localhost:9092
+      negotiationType: PLAINTEXT
+
+payment-service:
+  url: http://localhost:8083
+
+logging:
+  pattern:
+    console: "%d{ISO8601} [${spring.application.name},%X{traceId:-},%X{spanId:-}] %-5level [%thread] %logger{36} - %msg%n"
+
+# Resilience4j Circuit Breaker, Retry, and TimeLimiter configuration
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        register-health-indicator: true
+    instances:
+      paymentService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state:
+          seconds: 10
+        permitted-number-of-calls-in-half-open-state: 3
+        minimum-number-of-calls: 5
+  retry:
+    instances:
+      paymentService:
+        max-attempts: 3
+        wait-duration:
+          seconds: 1
+        retry-exceptions:
+          - org.springframework.web.client.RestClientException
+  timelimiter:
+    instances:
+      paymentService:
+        timeout-duration:
+          seconds: 3
+
+---
+# Eureka service discovery profile
+spring:
+  config:
+    activate:
+      on-profile: eureka
+  cloud:
+    discovery:
+      enabled: true
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server.poc.svc.cluster.local:8761/eureka/
+    registry-fetch-interval-seconds: 5
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+
+---
+# Consul service discovery profile
+spring:
+  config:
+    activate:
+      on-profile: consul
+  cloud:
+    consul:
+      host: consul.poc.svc.cluster.local
+      port: 8500
+      discovery:
+        enabled: true
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 10s
+        instance-id: ${spring.application.name}-${random.value}
+    discovery:
+      enabled: true
+
+---
+# Kubernetes profile - observability endpoints
+spring:
+  config:
+    activate:
+      on-profile: k8s
+
+management:
+  otlp:
+    tracing:
+      endpoint: http://otel-collector.poc.svc.cluster.local:4318/v1/traces

@@ -1,0 +1,111 @@
+# Traffic Management Rules for S2S Communication PoC
+#
+# This file defines Istio VirtualService and DestinationRule resources for
+# managing traffic routing across the service mesh.
+#
+# Contents:
+# 1. DestinationRule for order-service - defines v1 and v2 subsets
+# 2. VirtualService for order-service - canary split (90% v1, 10% v2)
+# 3. VirtualService for product-service - standard routing with timeouts/retries
+
+---
+# DestinationRule: order-service
+#
+# Defines two subsets (v1 and v2) based on the "version" pod label.
+# Deployments must label their pods with "version: v1" or "version: v2"
+# for subset routing to work.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: order-service
+  namespace: poc
+  labels:
+    app.kubernetes.io/part-of: s2s-comm-poc
+    app.kubernetes.io/component: service-mesh
+spec:
+  host: order-service.poc.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        h2UpgradePolicy: DEFAULT
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 100
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
+
+---
+# VirtualService: order-service (canary deployment)
+#
+# Routes 90% of traffic to v1 (stable) and 10% to v2 (canary).
+# Includes timeout and retry policies for resilience.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: order-service
+  namespace: poc
+  labels:
+    app.kubernetes.io/part-of: s2s-comm-poc
+    app.kubernetes.io/component: service-mesh
+spec:
+  hosts:
+    - order-service.poc.svc.cluster.local
+  http:
+    - route:
+        - destination:
+            host: order-service.poc.svc.cluster.local
+            subset: v1
+            port:
+              number: 8081
+          weight: 90
+        - destination:
+            host: order-service.poc.svc.cluster.local
+            subset: v2
+            port:
+              number: 8081
+          weight: 10
+      timeout: 10s
+      retries:
+        attempts: 3
+        perTryTimeout: 3s
+        retryOn: 5xx,reset,connect-failure,retriable-4xx
+
+---
+# VirtualService: product-service (standard routing)
+#
+# Routes all traffic to product-service with timeout and retry policies.
+# No canary split; this demonstrates normal routing with resilience config.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: product-service
+  namespace: poc
+  labels:
+    app.kubernetes.io/part-of: s2s-comm-poc
+    app.kubernetes.io/component: service-mesh
+spec:
+  hosts:
+    - product-service.poc.svc.cluster.local
+  http:
+    - route:
+        - destination:
+            host: product-service.poc.svc.cluster.local
+            port:
+              number: 8082
+          weight: 100
+      timeout: 10s
+      retries:
+        attempts: 3
+        perTryTimeout: 3s
+        retryOn: 5xx,reset,connect-failure

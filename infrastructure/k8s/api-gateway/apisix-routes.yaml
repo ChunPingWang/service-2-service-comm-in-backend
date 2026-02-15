@@ -1,0 +1,235 @@
+##
+# APISIX Route Configuration (Standalone Mode)
+#
+# This ConfigMap contains the apisix.yaml file that defines all routes,
+# upstreams, consumers, and plugin configurations for the API gateway.
+#
+# Routes:
+#   - /api/v1/orders/*          -> order-service:8081         (JWT + rate limit)
+#   - /api/v1/products/*        -> product-service:8082       (public + rate limit)
+#   - /api/v1/payments/*        -> payment-service:8083       (JWT + rate limit)
+#   - /api/v1/notifications/*   -> notification-service:8084  (JWT + rate limit)
+#   - /api/v1/shipments/*       -> shipping-service:8085      (JWT + rate limit)
+#   - gRPC: /grpc/product/*     -> product-service:9092       (public + rate limit)
+#
+# Plugins:
+#   - jwt-auth:  HMAC-SHA256 authentication on protected routes (T097)
+#   - limit-req: 100 req/s with burst of 50, rejected_code=429 (T098)
+##
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apisix-routes
+  namespace: poc
+  labels:
+    app: apisix
+data:
+  apisix.yaml: |
+    # ─── Consumers (T097: JWT Authentication) ──────────────────────────────────
+    consumers:
+      - username: test-consumer
+        plugins:
+          jwt-auth:
+            key: test-consumer-key
+            secret: s2s-poc-jwt-secret-key-for-testing
+            algorithm: HS256
+
+    # ─── Routes ────────────────────────────────────────────────────────────────
+
+    routes:
+      # ── Order Service (protected) ──────────────────────────────────────────
+      - id: orders-route
+        uri: /api/v1/orders/*
+        upstream:
+          type: roundrobin
+          nodes:
+            "order-service.poc.svc.cluster.local:8081": 1
+        plugins:
+          jwt-auth: {}
+          proxy-rewrite:
+            regex_uri:
+              - "^/api/v1/orders/(.*)"
+              - "/api/v1/orders/$1"
+          limit-req:
+            rate: 100
+            burst: 50
+            rejected_code: 429
+            key_type: var
+            key: remote_addr
+
+      # ── Order Service base path (protected) ──────────────────────────────────
+      - id: orders-base-route
+        uri: /api/v1/orders
+        upstream:
+          type: roundrobin
+          nodes:
+            "order-service.poc.svc.cluster.local:8081": 1
+        plugins:
+          jwt-auth: {}
+          limit-req:
+            rate: 100
+            burst: 50
+            rejected_code: 429
+            key_type: var
+            key: remote_addr
+
+      # ── Product Service (public) ───────────────────────────────────────────
+      - id: products-route
+        uri: /api/v1/products/*
+        upstream:
+          type: roundrobin
+          nodes:
+            "product-service.poc.svc.cluster.local:8082": 1
+        plugins:
+          proxy-rewrite:
+            regex_uri:
+              - "^/api/v1/products/(.*)"
+              - "/api/v1/products/$1"
+          limit-req:
+            rate: 100
+            burst: 50
+            rejected_code: 429
+            key_type: var
+            key: remote_addr
+
+      # ── Product Service base path (public) ──────────────────────────────────
+      - id: products-base-route
+        uri: /api/v1/products
+        upstream:
+          type: roundrobin
+          nodes:
+            "product-service.poc.svc.cluster.local:8082": 1
+        plugins:
+          limit-req:
+            rate: 100
+            burst: 50
+            rejected_code: 429
+            key_type: var
+            key: remote_addr
+
+      # ── Payment Service (protected) ────────────────────────────────────────
+      - id: payments-route
+        uri: /api/v1/payments/*
+        upstream:
+          type: roundrobin
+          nodes:
+            "payment-service.poc.svc.cluster.local:8083": 1
+        plugins:
+          jwt-auth: {}
+          proxy-rewrite:
+            regex_uri:
+              - "^/api/v1/payments/(.*)"
+              - "/api/v1/payments/$1"
+          limit-req:
+            rate: 100
+            burst: 50
+            rejected_code: 429
+            key_type: var
+            key: remote_addr
+
+      # ── Payment Service base path (protected) ──────────────────────────────
+      - id: payments-base-route
+        uri: /api/v1/payments
+        upstream:
+          type: roundrobin
+          nodes:
+            "payment-service.poc.svc.cluster.local:8083": 1
+        plugins:
+          jwt-auth: {}
+          limit-req:
+            rate: 100
+            burst: 50
+            rejected_code: 429
+            key_type: var
+            key: remote_addr
+
+      # ── Notification Service (protected) ───────────────────────────────────
+      - id: notifications-route
+        uri: /api/v1/notifications/*
+        upstream:
+          type: roundrobin
+          nodes:
+            "notification-service.poc.svc.cluster.local:8084": 1
+        plugins:
+          jwt-auth: {}
+          proxy-rewrite:
+            regex_uri:
+              - "^/api/v1/notifications/(.*)"
+              - "/api/v1/notifications/$1"
+          limit-req:
+            rate: 100
+            burst: 50
+            rejected_code: 429
+            key_type: var
+            key: remote_addr
+
+      # ── Notification Service base path (protected) ──────────────────────────
+      - id: notifications-base-route
+        uri: /api/v1/notifications
+        upstream:
+          type: roundrobin
+          nodes:
+            "notification-service.poc.svc.cluster.local:8084": 1
+        plugins:
+          jwt-auth: {}
+          limit-req:
+            rate: 100
+            burst: 50
+            rejected_code: 429
+            key_type: var
+            key: remote_addr
+
+      # ── Shipping Service (protected) ───────────────────────────────────────
+      - id: shipments-route
+        uri: /api/v1/shipments/*
+        upstream:
+          type: roundrobin
+          nodes:
+            "shipping-service.poc.svc.cluster.local:8085": 1
+        plugins:
+          jwt-auth: {}
+          proxy-rewrite:
+            regex_uri:
+              - "^/api/v1/shipments/(.*)"
+              - "/api/v1/shipments/$1"
+          limit-req:
+            rate: 100
+            burst: 50
+            rejected_code: 429
+            key_type: var
+            key: remote_addr
+
+      # ── Shipping Service base path (protected) ─────────────────────────────
+      - id: shipments-base-route
+        uri: /api/v1/shipments
+        upstream:
+          type: roundrobin
+          nodes:
+            "shipping-service.poc.svc.cluster.local:8085": 1
+        plugins:
+          jwt-auth: {}
+          limit-req:
+            rate: 100
+            burst: 50
+            rejected_code: 429
+            key_type: var
+            key: remote_addr
+
+      # ── Product Service gRPC (public) ──────────────────────────────────────
+      - id: grpc-product-route
+        uri: /grpc/product/*
+        upstream:
+          type: roundrobin
+          scheme: grpc
+          nodes:
+            "product-service.poc.svc.cluster.local:9092": 1
+        plugins:
+          limit-req:
+            rate: 100
+            burst: 50
+            rejected_code: 429
+            key_type: var
+            key: remote_addr
+
+    #END

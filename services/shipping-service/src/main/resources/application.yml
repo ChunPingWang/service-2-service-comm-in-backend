@@ -1,0 +1,90 @@
+spring:
+  application:
+    name: shipping-service
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+server:
+  port: 8085
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+    metrics:
+      export:
+        enabled: true
+        step: 15s
+
+logging:
+  pattern:
+    console: "%d{ISO8601} [${spring.application.name},%X{traceId:-},%X{spanId:-}] %-5level [%thread] %logger{36} - %msg%n"
+
+---
+# Eureka service discovery profile
+spring:
+  config:
+    activate:
+      on-profile: eureka
+  cloud:
+    discovery:
+      enabled: true
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server.poc.svc.cluster.local:8761/eureka/
+    registry-fetch-interval-seconds: 5
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+
+---
+# Consul service discovery profile
+spring:
+  config:
+    activate:
+      on-profile: consul
+  cloud:
+    consul:
+      host: consul.poc.svc.cluster.local
+      port: 8500
+      discovery:
+        enabled: true
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 10s
+        instance-id: ${spring.application.name}-${random.value}
+    discovery:
+      enabled: true
+
+---
+# Kubernetes profile - observability endpoints
+spring:
+  config:
+    activate:
+      on-profile: k8s
+
+management:
+  otlp:
+    tracing:
+      endpoint: http://otel-collector.poc.svc.cluster.local:4318/v1/traces

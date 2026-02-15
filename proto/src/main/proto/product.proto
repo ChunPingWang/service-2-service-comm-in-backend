@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package com.poc.product;
+
+option java_multiple_files = true;
+option java_package = "com.poc.product.grpc";
+
+// ProductService provides gRPC interface for product queries
+// and inventory checks. Used by Order Service for internal
+// high-performance communication.
+service ProductService {
+  // GetProduct retrieves a single product by ID.
+  rpc GetProduct (GetProductRequest) returns (ProductResponse);
+
+  // CheckInventory verifies product availability for a given quantity.
+  rpc CheckInventory (CheckInventoryRequest) returns (InventoryResponse);
+
+  // ListProducts retrieves products filtered by category.
+  rpc ListProducts (ListProductsRequest) returns (ListProductsResponse);
+}
+
+message GetProductRequest {
+  string product_id = 1;
+}
+
+message ProductResponse {
+  string product_id = 1;
+  string name = 2;
+  string description = 3;
+  double price = 4;
+  string currency = 5;
+  int32 stock = 6;
+  string category = 7;
+}
+
+message CheckInventoryRequest {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message InventoryResponse {
+  bool available = 1;
+  int32 remaining_stock = 2;
+}
+
+message ListProductsRequest {
+  string category = 1;
+  int32 limit = 2;
+}
+
+message ListProductsResponse {
+  repeated ProductResponse products = 1;
+}

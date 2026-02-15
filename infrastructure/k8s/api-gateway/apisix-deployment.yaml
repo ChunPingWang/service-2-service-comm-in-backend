@@ -1,0 +1,120 @@
+##
+# APISIX API Gateway Deployment (Standalone Mode)
+#
+# Runs APISIX in standalone/decoupled mode using a static apisix.yaml
+# configuration file mounted via ConfigMap (see apisix-routes.yaml).
+# No separate etcd is required in standalone mode.
+#
+# Exposed via NodePort 30080 to match the Kind cluster port mapping
+# defined in infrastructure/kind/kind-cluster.yaml.
+##
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apisix-config
+  namespace: poc
+  labels:
+    app: apisix
+data:
+  config.yaml: |
+    apisix:
+      node_listen: 9080
+      enable_admin: false
+    deployment:
+      role: data_plane
+      role_data_plane:
+        config_provider: yaml
+    plugin_attr:
+      prometheus:
+        export_addr:
+          ip: "0.0.0.0"
+          port: 9091
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apisix
+  namespace: poc
+  labels:
+    app: apisix
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apisix
+  template:
+    metadata:
+      labels:
+        app: apisix
+    spec:
+      containers:
+        - name: apisix
+          image: apache/apisix:3.8.0-debian
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9080
+              name: http
+              protocol: TCP
+            - containerPort: 9091
+              name: prometheus
+              protocol: TCP
+          volumeMounts:
+            - name: apisix-config
+              mountPath: /usr/local/apisix/conf/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: apisix-routes
+              mountPath: /usr/local/apisix/conf/apisix.yaml
+              subPath: apisix.yaml
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /apisix/status
+              port: 9080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /apisix/status
+              port: 9080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+      volumes:
+        - name: apisix-config
+          configMap:
+            name: apisix-config
+        - name: apisix-routes
+          configMap:
+            name: apisix-routes
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apisix
+  namespace: poc
+  labels:
+    app: apisix
+spec:
+  type: NodePort
+  selector:
+    app: apisix
+  ports:
+    - port: 9080
+      targetPort: 9080
+      nodePort: 30080
+      name: http
+      protocol: TCP
+    - port: 9091
+      targetPort: 9091
+      name: prometheus
+      protocol: TCP
