@@ -1,0 +1,94 @@
+# Istio Installation Manifest for S2S Communication PoC
+#
+# This manifest uses the IstioOperator CRD to install Istio with a minimal
+# profile suitable for a Kind (Kubernetes-in-Docker) cluster.
+#
+# Installation steps:
+# 1. Install the Istio operator (istioctl operator init)
+# 2. Apply this manifest: kubectl apply -f istio-install.yaml
+#    Alternatively, install directly: istioctl install -f istio-install.yaml
+# 3. Verify installation: istioctl verify-install
+#
+# The "minimal" profile installs only the istiod control plane (Pilot).
+# Sidecar injection is handled via namespace labels (istio-injection: enabled)
+# configured in infrastructure/k8s/namespaces.yaml.
+#
+# Note: For Kind clusters, resource limits are intentionally kept low to
+# accommodate the constrained environment.
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: istio-control-plane
+  namespace: istio-system
+spec:
+  # Minimal profile: only istiod (Pilot) is installed.
+  # No ingress/egress gateways are deployed by default.
+  profile: minimal
+
+  # Mesh-wide configuration
+  meshConfig:
+    # Enable automatic sidecar injection for namespaces with the label
+    # "istio-injection: enabled" (already set in namespaces.yaml for "poc")
+    defaultConfig:
+      # Use ISTIO_MUTUAL for automatic mTLS between sidecars
+      holdApplicationUntilProxyStarts: true
+    # Enable access logging for debugging
+    accessLogFile: /dev/stdout
+    accessLogEncoding: JSON
+
+  components:
+    # Pilot (istiod) - the Istio control plane
+    pilot:
+      enabled: true
+      k8s:
+        # Resource limits suitable for Kind cluster
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        # Run a single replica in the dev/PoC environment
+        replicaCount: 1
+        # Horizontal Pod Autoscaler disabled for PoC
+        hpaSpec:
+          minReplicas: 1
+          maxReplicas: 1
+
+    # Ingress gateway - disabled for minimal profile
+    # Traffic enters through the APISIX gateway instead
+    ingressGateways:
+      - name: istio-ingressgateway
+        enabled: false
+
+    # Egress gateway - disabled for PoC
+    egressGateways:
+      - name: istio-egressgateway
+        enabled: false
+
+  # Global sidecar proxy configuration
+  values:
+    global:
+      # Proxy (sidecar) resource limits for Kind cluster
+      proxy:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+      # Proxy init container resource limits
+      proxy_init:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+    pilot:
+      # Enable status updates for debugging
+      enableProtocolSniffingForInbound: true
+      enableProtocolSniffingForOutbound: true

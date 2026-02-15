@@ -1,0 +1,87 @@
+# Consul deployment for infrastructure-level service discovery.
+#
+# Runs a single Consul agent in -dev (server) mode for the PoC.
+# Services with the 'consul' Spring profile active will register here.
+#
+# Ports:
+#   8500 - HTTP API (service registration, discovery, health)
+#   8600 - DNS interface (service-name.service.consul)
+#
+# NOTE: For production use, run a 3- or 5-node Consul server cluster
+# with persistent storage and ACLs enabled.
+#
+# Accessible at: consul.poc.svc.cluster.local:8500
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consul
+  labels:
+    app: consul
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: consul
+  template:
+    metadata:
+      labels:
+        app: consul
+    spec:
+      containers:
+        - name: consul
+          image: hashicorp/consul:1.18
+          imagePullPolicy: IfNotPresent
+          args:
+            - "agent"
+            - "-dev"
+            - "-client=0.0.0.0"
+            - "-log-level=info"
+          ports:
+            - containerPort: 8500
+              name: http-api
+            - containerPort: 8600
+              name: dns-tcp
+              protocol: TCP
+            - containerPort: 8600
+              name: dns-udp
+              protocol: UDP
+          livenessProbe:
+            httpGet:
+              path: /v1/status/leader
+              port: 8500
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /v1/status/leader
+              port: 8500
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: consul
+spec:
+  selector:
+    app: consul
+  ports:
+    - port: 8500
+      targetPort: 8500
+      name: http-api
+    - port: 8600
+      targetPort: 8600
+      name: dns-tcp
+      protocol: TCP
+    - port: 8600
+      targetPort: 8600
+      name: dns-udp
+      protocol: UDP
+  type: ClusterIP

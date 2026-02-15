@@ -1,0 +1,50 @@
+# Fault Injection Rules for S2S Communication PoC
+#
+# This VirtualService injects faults into payment-service traffic to test
+# the resilience of upstream callers (e.g., order-service).
+#
+# Fault types configured:
+# 1. HTTP delay: 2-second delay injected into 10% of requests
+#    - Simulates network latency or slow downstream dependencies
+#    - Helps validate timeout and retry configurations in callers
+#
+# 2. HTTP abort: HTTP 500 error returned for 5% of requests
+#    - Simulates service failures and server errors
+#    - Helps validate circuit breaker and fallback logic in callers
+#
+# These rules should be applied only in test/staging environments,
+# never in production.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: payment-service-fault-injection
+  namespace: poc
+  labels:
+    app.kubernetes.io/part-of: s2s-comm-poc
+    app.kubernetes.io/component: service-mesh
+    purpose: chaos-testing
+spec:
+  hosts:
+    - payment-service.poc.svc.cluster.local
+  http:
+    - fault:
+        delay:
+          # Inject a fixed 2-second delay into 10% of requests
+          percentage:
+            value: 10.0
+          fixedDelay: 2s
+        abort:
+          # Return HTTP 500 for 5% of requests
+          percentage:
+            value: 5.0
+          httpStatus: 500
+      route:
+        - destination:
+            host: payment-service.poc.svc.cluster.local
+            port:
+              number: 8083
+      timeout: 10s
+      retries:
+        attempts: 2
+        perTryTimeout: 5s
+        retryOn: reset,connect-failure

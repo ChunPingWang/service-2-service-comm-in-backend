@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: poc
+  labels:
+    project: s2s-comm-poc
+    istio-injection: enabled

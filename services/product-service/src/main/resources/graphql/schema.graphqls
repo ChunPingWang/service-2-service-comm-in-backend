@@ -1,0 +1,20 @@
+type Query {
+  product(id: ID!): Product
+  products(category: String, limit: Int = 10): [Product!]!
+  checkInventory(productId: ID!, quantity: Int!): InventoryCheck!
+}
+
+type Product {
+  id: ID!
+  name: String!
+  description: String
+  price: Float!
+  currency: String!
+  stock: Int!
+  category: String!
+}
+
+type InventoryCheck {
+  available: Boolean!
+  remainingStock: Int!
+}

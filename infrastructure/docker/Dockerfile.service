@@ -1,0 +1,48 @@
+# Stage 1: Build
+FROM eclipse-temurin:23-jdk-alpine AS build
+WORKDIR /app
+
+# Copy Maven wrapper and POM for dependency caching
+COPY pom.xml ./
+COPY .mvn .mvn
+COPY mvnw ./
+RUN chmod +x mvnw
+
+# Copy all module POMs for dependency resolution
+COPY proto/pom.xml proto/
+COPY services/order-service/pom.xml services/order-service/
+COPY services/product-service/pom.xml services/product-service/
+COPY services/payment-service/pom.xml services/payment-service/
+COPY services/notification-service/pom.xml services/notification-service/
+COPY services/shipping-service/pom.xml services/shipping-service/
+COPY e2e-tests/pom.xml e2e-tests/
+
+# Download dependencies (cached layer)
+RUN --mount=type=cache,target=/root/.m2 \
+    ./mvnw dependency:go-offline -B -q || true
+
+# Copy source and build
+COPY . .
+
+ARG SERVICE_MODULE
+RUN --mount=type=cache,target=/root/.m2 \
+    ./mvnw package -pl proto,services/${SERVICE_MODULE} -am -DskipTests -B -q
+
+# Stage 2: Runtime
+FROM eclipse-temurin:23-jre-alpine AS runtime
+
+RUN addgroup -S app && adduser -S app -G app
+WORKDIR /app
+
+ARG SERVICE_MODULE
+COPY --from=build /app/services/${SERVICE_MODULE}/target/*.jar app.jar
+
+RUN chown -R app:app /app
+USER app
+
+EXPOSE 8080 9090
+
+ENTRYPOINT ["java", \
+    "-XX:+UseZGC", \
+    "-XX:MaxRAMPercentage=75.0", \
+    "-jar", "app.jar"]

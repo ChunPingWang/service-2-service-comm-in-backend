@@ -1,0 +1,24 @@
+# mTLS PeerAuthentication Policy for the "poc" namespace
+#
+# This policy enforces STRICT mutual TLS for all service-to-service
+# communication within the namespace. When set to STRICT mode:
+#
+# - All inbound traffic to pods MUST be TLS-encrypted
+# - Istio sidecars automatically handle certificate provisioning,
+#   rotation, and mTLS handshake via the Citadel/istiod CA
+# - Plain-text (non-mTLS) requests from outside the mesh will be rejected
+#
+# This is a namespace-wide policy (no selector), meaning it applies
+# to every workload in the "poc" namespace.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls-strict
+  namespace: poc
+  labels:
+    app.kubernetes.io/part-of: s2s-comm-poc
+    app.kubernetes.io/component: service-mesh
+spec:
+  # No selector: applies to all workloads in the namespace
+  mtls:
+    mode: STRICT

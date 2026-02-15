@@ -21,51 +21,49 @@
 
 ## 系統架構
 
-```
-                          ┌─────────────────────────────────────────────────┐
-                          │              Kind Kubernetes Cluster             │
-                          │                                                 │
-  ┌──────────┐           │  ┌────────────┐    ┌─────────────────────────┐  │
-  │  Client   │──────────▶│  │ API Gateway │───▶│     Service Mesh        │  │
-  │ (Test/UI) │           │  │  (APISIX)  │    │   (Istio / Linkerd)     │  │
-  └──────────┘           │  └────────────┘    └─────────────────────────┘  │
-                          │        │                      │                 │
-                          │        ▼                      ▼                 │
-                          │  ┌──────────┐ REST  ┌──────────┐              │
-                          │  │  Order    │──────▶│ Product  │              │
-                          │  │  Service  │ gRPC  │ Service  │              │
-                          │  └──────────┘       └──────────┘              │
-                          │        │                                       │
-                          │        │ REST + Circuit Breaker                │
-                          │        ▼                                       │
-                          │  ┌──────────┐  Kafka   ┌──────────────┐       │
-                          │  │ Payment  │────────▶│ Notification │       │
-                          │  │ Service  │          │   Service    │       │
-                          │  └──────────┘          └──────────────┘       │
-                          │                              │                 │
-                          │                     RabbitMQ │                 │
-                          │                              ▼                 │
-                          │                        ┌──────────┐           │
-                          │                        │ Shipping │           │
-                          │                        │ Service  │           │
-                          │                        └──────────┘           │
-                          │                              │                 │
-                          │                        Kafka │ (ShipmentArrangedEvent)
-                          │                              ▼                 │
-                          │                     Order Service (SHIPPED)    │
-                          │                                                │
-                          │  ┌─────────────────────────────────────────┐   │
-                          │  │          Observability Stack             │   │
-                          │  │  OpenTelemetry → Jaeger (Tracing)       │   │
-                          │  │  Prometheus → Grafana (Metrics)         │   │
-                          │  │  Loki (Logs)                            │   │
-                          │  └─────────────────────────────────────────┘   │
-                          │                                                │
-                          │  ┌─────────────────────────────────────────┐   │
-                          │  │        Service Discovery                 │   │
-                          │  │  K8s DNS / Eureka / Consul              │   │
-                          │  └─────────────────────────────────────────┘   │
-                          └─────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph cluster["Kind Kubernetes Cluster"]
+        direction TB
+        Client["Client<br/>(Test/UI)"] --> GW["API Gateway<br/>(APISIX)"]
+        GW --> Mesh["Service Mesh<br/>(Istio / Linkerd)"]
+
+        subgraph services["Microservices"]
+            direction LR
+            Order["Order<br/>Service"]
+            Product["Product<br/>Service"]
+            Payment["Payment<br/>Service"]
+            Notification["Notification<br/>Service"]
+            Shipping["Shipping<br/>Service"]
+        end
+
+        Mesh --> Order
+        Mesh --> Product
+        Mesh --> Payment
+
+        Order -- "REST / gRPC" --> Product
+        Order -- "REST + Circuit Breaker" --> Payment
+        Payment -- "Kafka<br/>(payment.completed)" --> Notification
+        Notification -- "RabbitMQ<br/>(shipping.exchange)" --> Shipping
+        Shipping -- "Kafka<br/>(shipment.arranged)" --> Order
+
+        subgraph observability["Observability Stack"]
+            OTel["OpenTelemetry"] --> Jaeger["Jaeger<br/>(Tracing)"]
+            Prom["Prometheus"] --> Grafana["Grafana<br/>(Metrics)"]
+            Loki["Loki<br/>(Logs)"]
+        end
+
+        subgraph discovery["Service Discovery"]
+            K8sDNS["K8s DNS"]
+            Eureka["Eureka"]
+            Consul["Consul"]
+        end
+    end
+
+    style cluster fill:#f0f4ff,stroke:#4a6fa5
+    style services fill:#e8f5e9,stroke:#388e3c
+    style observability fill:#fff3e0,stroke:#f57c00
+    style discovery fill:#fce4ec,stroke:#c62828
 ```
 
 ### 5 個微服務
@@ -92,9 +90,12 @@
 
 **技術實現：** Spring Boot 4 的 `RestClient`（取代已棄用的 `RestTemplate`）
 
-```
-Order Service ──── POST /api/v1/payments ────▶ Payment Service
-                ◀── 200 OK + PaymentResponse ──
+```mermaid
+sequenceDiagram
+    participant O as Order Service
+    participant P as Payment Service
+    O->>P: POST /api/v1/payments
+    P-->>O: 200 OK + PaymentResponse
 ```
 
 **適合場景：** 需要即時回應的請求-回應模式，例如付款確認。
@@ -157,10 +158,17 @@ query {
 
 **核心概念：**
 
-```
-Producer ──▶ [  Topic (分區 0)  ] ──▶ Consumer Group
-             [  Topic (分區 1)  ]
-             [  Topic (分區 2)  ]
+```mermaid
+graph LR
+    P["Producer"] --> T0["Topic<br/>Partition 0"]
+    P --> T1["Topic<br/>Partition 1"]
+    P --> T2["Topic<br/>Partition 2"]
+    T0 --> CG["Consumer Group"]
+    T1 --> CG
+    T2 --> CG
+    CG -.-> DLQ["DLQ<br/>(Dead Letter Queue)"]
+
+    style DLQ fill:#ffcdd2,stroke:#c62828
 ```
 
 - **Topic**：事件的類別（像郵局的信箱）
@@ -181,11 +189,15 @@ Producer ──▶ [  Topic (分區 0)  ] ──▶ Consumer Group
 
 **核心概念：**
 
-```
-Producer ──▶ Exchange ──(routing key)──▶ Queue ──▶ Consumer
-                                          │
-                                     (失敗) ▼
-                                      DLQ（死信佇列）
+```mermaid
+graph LR
+    P["Producer"] --> E["Exchange<br/>(Topic)"]
+    E -- "routing key" --> Q["Queue"]
+    Q --> C["Consumer"]
+    Q -. "失敗" .-> DLQ["DLQ<br/>(死信佇列)"]
+
+    style E fill:#e3f2fd,stroke:#1565c0
+    style DLQ fill:#ffcdd2,stroke:#c62828
 ```
 
 - **Exchange**：訊息路由器（本專案用 Topic Exchange）
@@ -205,6 +217,21 @@ Producer ──▶ Exchange ──(routing key)──▶ Queue ──▶ Consume
 - Apache APISIX 作為所有外部請求的入口
 
 **功能驗證：**
+
+```mermaid
+graph LR
+    C["Client"] --> GW["API Gateway<br/>(APISIX)"]
+    GW -- "/api/v1/orders" --> O["Order Service"]
+    GW -- "/api/v1/products" --> P["Product Service"]
+    GW -- "/graphql" --> P
+    GW -- "gRPC" --> P
+    GW -- "/api/v1/payments" --> Pay["Payment Service"]
+
+    GW -. "JWT 認證失敗 → 401" .-> C
+    GW -. "超過限流 → 429" .-> C
+
+    style GW fill:#fff3e0,stroke:#e65100,stroke-width:2px
+```
 
 | 功能 | 說明 | 驗證方式 |
 |------|------|---------|
@@ -238,16 +265,17 @@ Producer ──▶ Exchange ──(routing key)──▶ Queue ──▶ Consume
 
 **三種狀態：**
 
-```
-    正常運作              失敗率超過閾值           等待時間到
-   ┌────────┐          ┌────────┐          ┌────────────┐
-   │ CLOSED │──────▶│  OPEN  │──────▶│ HALF-OPEN  │
-   │(通過)   │          │(拒絕)   │          │(試探)       │
-   └────────┘          └────────┘          └────────────┘
-        ▲                                        │
-        │          成功 → 回到 CLOSED              │
-        └──────────────────────────────────────┘
-                   失敗 → 回到 OPEN
+```mermaid
+stateDiagram-v2
+    [*] --> CLOSED: 正常運作
+    CLOSED --> OPEN: 失敗率超過閾值 (50%)
+    OPEN --> HALF_OPEN: 等待時間到 (10s)
+    HALF_OPEN --> CLOSED: 試探成功
+    HALF_OPEN --> OPEN: 試探失敗
+
+    CLOSED: ✅ 通過所有請求
+    OPEN: ❌ 拒絕所有請求（回傳 fallback）
+    HALF_OPEN: 🔄 允許少量請求試探
 ```
 
 **技術實現：** Resilience4j 2.3.0
@@ -313,40 +341,53 @@ Producer ──▶ Exchange ──(routing key)──▶ Queue ──▶ Consume
 每個服務都遵循**六角形架構**（也稱為 Ports & Adapters），核心理念是：
 **業務邏輯不依賴任何框架或基礎設施。**
 
-```
-              ┌──────────────────────────────────────┐
-              │           Adapter Layer (外圈)         │
-              │                                      │
-              │  ┌─── adapter/in/ ──────────────┐    │
-              │  │  REST Controller              │    │
-              │  │  gRPC Service                 │    │
-              │  │  GraphQL Resolver             │    │
-              │  │  Kafka Consumer               │    │
-              │  └──────────────────────────────┘    │
-              │                                      │
-              │  ┌──────────────────────────────┐    │
-              │  │     Application Layer (中圈)   │    │
-              │  │                              │    │
-              │  │  port/in/  ← 使用案例介面      │    │
-              │  │  port/out/ ← 外部依賴介面      │    │
-              │  │  service/  ← 應用服務實作      │    │
-              │  └──────────────────────────────┘    │
-              │                                      │
-              │  ┌──────────────────────────────┐    │
-              │  │      Domain Layer (內圈)       │    │
-              │  │                              │    │
-              │  │  model/  ← 領域模型           │    │
-              │  │  event/  ← 領域事件           │    │
-              │  │  （零框架依賴！）              │    │
-              │  └──────────────────────────────┘    │
-              │                                      │
-              │  ┌─── adapter/out/ ─────────────┐    │
-              │  │  gRPC Client                  │    │
-              │  │  REST Client                  │    │
-              │  │  Kafka Producer               │    │
-              │  │  RabbitMQ Publisher            │    │
-              │  └──────────────────────────────┘    │
-              └──────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph outer["Adapter Layer (外圈)"]
+        direction TB
+        subgraph inbound["adapter/in/ — 入站轉接器"]
+            REST["REST Controller"]
+            GRPC_IN["gRPC Service"]
+            GQL["GraphQL Resolver"]
+            KAFKA_IN["Kafka Consumer"]
+        end
+
+        subgraph app["Application Layer (中圈)"]
+            PORT_IN["port/in/ — 使用案例介面<br/>(CreateOrderUseCase, ...)"]
+            PORT_OUT["port/out/ — 外部依賴介面<br/>(ProductQueryPort, ...)"]
+            SVC["service/ — 應用服務實作"]
+        end
+
+        subgraph domain["Domain Layer (內圈) — 零框架依賴"]
+            MODEL["model/ — 領域模型<br/>(Order, Product, Payment)"]
+            EVENT["event/ — 領域事件<br/>(OrderCreatedEvent, ...)"]
+        end
+
+        subgraph outbound["adapter/out/ — 出站轉接器"]
+            GRPC_OUT["gRPC Client"]
+            REST_OUT["REST Client"]
+            KAFKA_OUT["Kafka Producer"]
+            RABBIT_OUT["RabbitMQ Publisher"]
+        end
+    end
+
+    REST --> PORT_IN
+    GRPC_IN --> PORT_IN
+    GQL --> PORT_IN
+    KAFKA_IN --> PORT_IN
+    PORT_IN --> SVC
+    SVC --> MODEL
+    SVC --> EVENT
+    SVC --> PORT_OUT
+    PORT_OUT --> GRPC_OUT
+    PORT_OUT --> REST_OUT
+    PORT_OUT --> KAFKA_OUT
+    PORT_OUT --> RABBIT_OUT
+
+    style domain fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
+    style app fill:#fff9c4,stroke:#f9a825,stroke-width:2px
+    style inbound fill:#e3f2fd,stroke:#1565c0
+    style outbound fill:#e3f2fd,stroke:#1565c0
 ```
 
 **為什麼用六角形架構？**
@@ -504,24 +545,54 @@ make clean    # 刪除 Kind 叢集 + 清除建置產物
 
 完整的訂單處理流程橫跨所有 5 個服務：
 
-```
-步驟 1: 客戶透過 GraphQL 查詢商品
-        Client ──GraphQL──▶ Product Service
+```mermaid
+sequenceDiagram
+    actor Client
+    participant GW as API Gateway
+    participant Order as Order Service
+    participant Product as Product Service
+    participant Payment as Payment Service
+    participant Notif as Notification Service
+    participant Ship as Shipping Service
 
-步驟 2: 客戶建立訂單，Order Service 透過 gRPC 確認庫存
-        Client ──REST──▶ Order Service ──gRPC──▶ Product Service
+    Note over Client,Ship: 🔍 Trace ID 串連整個流程
 
-步驟 3: Order Service 透過 REST 處理付款（Circuit Breaker 保護）
-        Order Service ──REST──▶ Payment Service
+    rect rgb(232, 245, 233)
+        Note right of Client: 步驟 1: 查詢商品
+        Client->>GW: GraphQL Query
+        GW->>Product: products(category, limit)
+        Product-->>Client: Product[]
+    end
 
-步驟 4: Payment Service 發布付款完成事件
-        Payment Service ──Kafka──▶ Notification Service
+    rect rgb(227, 242, 253)
+        Note right of Client: 步驟 2: 建立訂單 + 庫存確認
+        Client->>GW: POST /api/v1/orders
+        GW->>Order: CreateOrderRequest
+        Order->>Product: gRPC CheckInventory
+        Product-->>Order: InventoryResponse ✅
+    end
 
-步驟 5: Notification Service 透過 RabbitMQ 通知出貨
-        Notification Service ──RabbitMQ──▶ Shipping Service
+    rect rgb(255, 243, 224)
+        Note right of Order: 步驟 3: 處理付款 (Circuit Breaker)
+        Order->>Payment: POST /api/v1/payments
+        Payment-->>Order: PaymentResponse ✅
+    end
 
-步驟 6: Shipping Service 發布出貨事件，Order 更新為 SHIPPED
-        Shipping Service ──Kafka──▶ Order Service (status → SHIPPED)
+    rect rgb(243, 229, 245)
+        Note right of Payment: 步驟 4: 付款完成事件
+        Payment-)Notif: Kafka: payment.completed
+    end
+
+    rect rgb(252, 228, 236)
+        Note right of Notif: 步驟 5: 安排出貨
+        Notif-)Ship: RabbitMQ: shipping.create
+    end
+
+    rect rgb(255, 249, 196)
+        Note right of Ship: 步驟 6: 出貨回饋
+        Ship-)Order: Kafka: shipment.arranged
+        Note over Order: status → SHIPPED ✅
+    end
 ```
 
 一個 Trace ID 串連整個流程，可在 Jaeger UI 中完整查看。
@@ -569,6 +640,46 @@ make clean    # 刪除 Kind 叢集 + 清除建置產物
 | 埠與轉接器 | Ports & Adapters | 六角形架構的別名，Port 是介面，Adapter 是實作 |
 | 分散式追蹤 | Distributed Tracing | 追蹤一個請求跨多個服務的完整路徑 |
 | 關聯 ID | Correlation ID | 跨服務串連同一個請求的唯一識別碼 |
+
+---
+
+## 事件流拓撲
+
+```mermaid
+graph LR
+    subgraph sync["同步通訊"]
+        O["Order<br/>Service"] -- "gRPC" --> P["Product<br/>Service"]
+        O -- "REST<br/>+ Circuit Breaker" --> Pay["Payment<br/>Service"]
+        Client["Client"] -- "GraphQL" --> P
+        Client -- "REST" --> O
+    end
+
+    subgraph async["非同步通訊"]
+        O -- "Kafka<br/>order.created" --> Pay
+        Pay -- "Kafka<br/>payment.completed" --> N["Notification<br/>Service"]
+        N -- "RabbitMQ<br/>shipping.create" --> S["Shipping<br/>Service"]
+        S -- "Kafka<br/>shipment.arranged" --> O
+    end
+
+    style sync fill:#e8f5e9,stroke:#388e3c
+    style async fill:#e3f2fd,stroke:#1565c0
+```
+
+## 訂單狀態機
+
+```mermaid
+stateDiagram-v2
+    [*] --> CREATED: 建立訂單
+    CREATED --> PAYMENT_PENDING: 庫存確認 (gRPC)
+    PAYMENT_PENDING --> PAID: 付款完成 (PaymentCompletedEvent)
+    PAID --> SHIPPED: 出貨完成 (ShipmentArrangedEvent)
+    SHIPPED --> [*]
+
+    CREATED: 📦 訂單已建立
+    PAYMENT_PENDING: 💳 等待付款
+    PAID: ✅ 已付款
+    SHIPPED: 🚚 已出貨 (終態)
+```
 
 ---
 
